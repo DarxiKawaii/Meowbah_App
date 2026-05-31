@@ -69,6 +69,15 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.TextButton
+
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VideosScreen(
@@ -78,11 +87,14 @@ fun VideosScreen(
     android.util.Log.d("VideosScreen", "ViewModel instance: $viewModel")
 
     val videosState: List<CachedVideoInfo> by viewModel.videos.collectAsState()
+    val filters by viewModel.generatedFilters.collectAsState()
+    val selectedFilter by viewModel.selectedFilter.collectAsState()
     val isLoading: Boolean by viewModel.isLoading.collectAsState()
     val errorMessage: String? by viewModel.error.collectAsState()
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var searchActive by rememberSaveable { mutableStateOf(false) }
+    var showClearCacheDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val youtubeChannelUrl = "https://www.youtube.com/@Meowbahx"
 
@@ -105,6 +117,21 @@ fun VideosScreen(
         }
     }
 
+    LaunchedEffect(videosState) {
+        if (videosState.isNotEmpty() && filters.size <= 1) {
+            viewModel.generateFilters()
+        }
+    }
+
+    val filteredVideos = videosState.filter { video ->
+        val matchesQuery = video.title.contains(searchQuery, ignoreCase = true) || 
+                          (video.description?.contains(searchQuery, ignoreCase = true) == true)
+        val matchesFilter = selectedFilter == "All" || 
+                           video.title.contains(selectedFilter, ignoreCase = true) ||
+                           (video.description?.contains(selectedFilter, ignoreCase = true) == true)
+        matchesQuery && matchesFilter
+    }
+
     val searchBarHeight = 56.dp
     val searchBarVerticalOuterPadding = 8.dp // Padding around the search bar input area
     val additionalTopPadding = 44.dp // Extra padding below status bar (WAS 8.dp)
@@ -114,7 +141,16 @@ fun VideosScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            contentWindowInsets = WindowInsets(0.dp) // True edge-to-edge
+            contentWindowInsets = WindowInsets(0.dp), // True edge-to-edge
+            floatingActionButton = {
+                ExtendedFloatingActionButton(
+                    onClick = { showClearCacheDialog = true },
+                    icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                    text = { Text("Clear Cache") },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
         ) { scaffoldInternalPaddingValues ->
             Column(
                 modifier = Modifier
@@ -145,12 +181,26 @@ fun VideosScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = 16.dp, top = searchBarAreaTotalHeight, end = 16.dp, bottom = 8.dp)
                     ) {
-                        items(videosState) { video ->
+                        item {
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(filters) { filter ->
+                                    FilterChip(
+                                        selected = selectedFilter == filter,
+                                        onClick = { viewModel.selectFilter(filter) },
+                                        label = { Text(filter) }
+                                    )
+                                }
+                            }
+                        }
+                        items(filteredVideos) { video ->
                             VideoListItem(video = video, onVideoClick = { clickedVideo ->
                                 onVideoClick(clickedVideo.id)
                             })
                         }
-                        if (videosState.isNotEmpty()) {
+                        if (filteredVideos.isNotEmpty()) {
                             item {
                                 FilledTonalButton(
                                     onClick = {
@@ -244,6 +294,27 @@ fun VideosScreen(
                 }
             }
         }
+    }
+
+    if (showClearCacheDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearCacheDialog = false },
+            title = { Text("Clear Video Cache") },
+            text = { Text("This will remove all cached videos older than the latest feed. You will need to fetch them again. Are you sure?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.clearCache()
+                    showClearCacheDialog = false
+                }) {
+                    Text("Clear")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearCacheDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

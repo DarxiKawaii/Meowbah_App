@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AddShoppingCart
 import androidx.compose.material.icons.filled.Share // Added for Share icon
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -31,11 +32,15 @@ import com.kawaii.meowbah.data.model.MerchItem
 @Composable
 fun MerchDetailScreen(
     merchId: String?,
-    merchViewModel: MerchViewModel = viewModel(),
+    merchViewModel: MerchViewModel,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     var merchItem by remember { mutableStateOf<MerchItem?>(null) }
+    
+    // We'll need a way to show a snackbar if we add to cart from here
+    // But this screen is usually in a Dialog or Sheet.
+    // Let's just add the button for now.
 
     LaunchedEffect(merchId) {
         if (merchId != null) {
@@ -105,7 +110,7 @@ fun MerchDetailScreen(
 
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
-                            .data(item.imageResId)
+                            .data(item.imageUrl ?: item.imageResId)
                             .crossfade(true)
                             .placeholder(R.drawable.ic_placeholder)
                             .error(R.drawable.ic_launcher_background)
@@ -136,8 +141,24 @@ fun MerchDetailScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Button(
+                        onClick = {
+                            merchViewModel.addToCart(item)
+                        },
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                                       .fillMaxWidth(0.8f)
+                    ) {
+                        Icon(Icons.Default.AddShoppingCart, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Add to Cart")
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     item.storeUrl?.let {
-                        FilledTonalButton(
+                        OutlinedButton(
                             onClick = {
                                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(it))
                                 context.startActivity(intent)

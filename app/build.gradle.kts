@@ -26,7 +26,9 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Removed YOUTUBE_API_KEY and YOUTUBE_CHANNEL_ID BuildConfig fields
+        
+        // Expose Gemini API Key from local.properties
+        buildConfigField("String", "GEMINI_API_KEY", "\"${properties.getProperty("GEMINI_API_KEY") ?: ""}\"")
     }
 
     buildTypes {
@@ -87,6 +89,7 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     // implementation(libs.androidx.wear.tooling.preview) // REMOVED THIS LINE
     implementation(libs.androidx.core.splashscreen)
+    implementation(libs.generativeai)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -17,6 +17,8 @@ data class MerchItem(
     val name: String,
     val description: String,
     val price: String,
-    @DrawableRes val imageResId: Int,
-    val storeUrl: String? = null
+    @DrawableRes val imageResId: Int? = null,
+    val imageUrl: String? = null,
+    val storeUrl: String? = null,
+    val variantId: String? = null
 )
