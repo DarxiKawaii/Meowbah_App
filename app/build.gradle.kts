@@ -26,7 +26,6 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Removed YOUTUBE_API_KEY and YOUTUBE_CHANNEL_ID BuildConfig fields
     }
 
     buildTypes {

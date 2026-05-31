@@ -253,6 +253,7 @@ fun MainScreen(
     val TAG = "MainScreen"
     val innerNavController = rememberNavController()
     val videosViewModel: VideosViewModel = viewModel()
+    val merchViewModel: com.kawaii.meowbah.ui.screens.merch.MerchViewModel = viewModel()
 
     val navBackStackEntry by innerNavController.currentBackStackEntryAsState()
     val currentInnerDestination = navBackStackEntry?.destination
@@ -323,7 +324,8 @@ fun MainScreen(
                 }
                 composable(BottomNavItem.Merch.route) { 
                     MerchScreen(
-                        onMerchClick = { merchId -> selectedMerchIdForSheet = merchId }
+                        onMerchClick = { merchId -> selectedMerchIdForSheet = merchId },
+                        merchViewModel = merchViewModel
                     )
                 }
             }
@@ -350,6 +352,7 @@ fun MainScreen(
         ) {
             MerchDetailScreen(
                 merchId = selectedMerchIdForSheet!!,
+                merchViewModel = merchViewModel,
                 onDismiss = { selectedMerchIdForSheet = null }
             )
         }

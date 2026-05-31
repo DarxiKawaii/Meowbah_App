@@ -5,15 +5,49 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-// import androidx.compose.material.ripple.rememberRipple // Import removed
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -24,48 +58,95 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-// ViewModel import will be used from the separate FanArtViewModel.kt file
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.kawaii.meowbah.R
-// kotlinx.coroutines.flow imports are used by the external FanArtViewModel
 
-// Data class for Fan Art, imageUrl is a Drawable Int Res ID
 data class FanArt(val id: String, val imageUrl: Int, val title: String? = null)
-
-// Removed the embedded FanArtViewModel class definition from here
-// The app will use FanArtViewModel from FanArtViewModel.kt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FanArtScreen(navController: NavController) {
-    // This will now refer to the FanArtViewModel in FanArtViewModel.kt
     val viewModel: FanArtViewModel = viewModel()
     val fanArts by viewModel.fanArts.collectAsState()
     var selectedFanArt by remember { mutableStateOf<FanArt?>(null) }
     val context = LocalContext.current
 
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchActive by rememberSaveable { mutableStateOf(false) }
+
+    val filteredFanArts = fanArts.filter {
+        it.title?.contains(searchQuery, ignoreCase = true) == true
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        contentWindowInsets = WindowInsets(0.dp) // Set to 0 for edge-to-edge
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    if (!searchActive) {
+                        Text("Kawaii Art")
+                    } else {
+                        SearchBar(
+                            query = searchQuery,
+                            onQueryChange = { searchQuery = it },
+                            onSearch = { searchActive = false },
+                            active = searchActive,
+                            onActiveChange = { searchActive = it },
+                            placeholder = { Text("Search Art") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                            colors = SearchBarDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            val suggestions = fanArts.filter { 
+                                it.title?.contains(searchQuery, ignoreCase = true) == true
+                            }
+                            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                                items(suggestions) { art ->
+                                    ListItem(
+                                        headlineContent = { Text(art.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                        modifier = Modifier.clickable {
+                                            searchQuery = art.title ?: ""
+                                            searchActive = false
+                                            selectedFanArt = art
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                actions = {
+                    if (!searchActive) {
+                        FilledTonalIconButton(
+                            onClick = { searchActive = true },
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Search, contentDescription = "Search")
+                        }
+                    }
+                }
+            )
+        },
+        contentWindowInsets = WindowInsets(0.dp)
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues) // Apply padding from Scaffold to the Column
+                .padding(paddingValues)
         ) {
             if (fanArts.isEmpty()) {
                 Box(
                     modifier = Modifier
-                        .weight(1f) // Takes up available space
+                        .weight(1f)
                         .fillMaxSize()
                         .safeDrawingPadding(),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No fan art available yet!\nCheck back soon!",
+                        text = "No art available yet!\nCheck back soon!",
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(16.dp)
                     )
@@ -73,19 +154,17 @@ fun FanArtScreen(navController: NavController) {
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
-                    contentPadding = WindowInsets.safeDrawing
-                        .add(WindowInsets(left = 16.dp, top = 72.dp, right = 16.dp, bottom = 16.dp))
-                        .asPaddingValues(), // Padding around the grid items
-                    modifier = Modifier.weight(1f), // Grid takes available space
+                    contentPadding = PaddingValues(16.dp),
+                    modifier = Modifier.weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(fanArts) { fanArt ->
+                    items(filteredFanArts) { fanArt ->
                         FanArtListItem(fanArt = fanArt, onFanArtClick = { selectedFanArt = it })
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp)) // Space above the button
+            Spacer(modifier = Modifier.height(8.dp))
             FilledTonalButton(
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.patreon.com/meowbah"))
@@ -94,7 +173,7 @@ fun FanArtScreen(navController: NavController) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .navigationBarsPadding() // Add padding to avoid the navigation bar
+                    .navigationBarsPadding()
             ) {
                 Text("Support Meowbah on Patreon")
             }
@@ -113,7 +192,7 @@ fun FanArtListItem(fanArt: FanArt, onFanArtClick: (FanArt) -> Unit) {
             .fillMaxWidth()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(), // Reverted to ripple()
+                indication = ripple(),
                 onClick = { onFanArtClick(fanArt) }
             ),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
@@ -129,7 +208,7 @@ fun FanArtListItem(fanArt: FanArt, onFanArtClick: (FanArt) -> Unit) {
                     .placeholder(R.drawable.ic_placeholder)
                     .error(R.drawable.ic_launcher_background)
                     .build(),
-                contentDescription = fanArt.title ?: "Fan art",
+                contentDescription = fanArt.title ?: "Art",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -163,7 +242,7 @@ fun FullScreenFanArtDialog(fanArt: FanArt, onDismiss: () -> Unit) {
                 .background(Color.Black.copy(alpha = 0.85f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
-                    indication = null, // No indication for the background click
+                    indication = null,
                     onClick = onDismiss
                 ),
             contentAlignment = Alignment.Center
@@ -175,11 +254,11 @@ fun FullScreenFanArtDialog(fanArt: FanArt, onDismiss: () -> Unit) {
                     .placeholder(R.drawable.ic_placeholder)
                     .error(R.drawable.ic_launcher_background)
                     .build(),
-                contentDescription = fanArt.title ?: "Full screen fan art",
+                contentDescription = fanArt.title ?: "Full screen art",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp) // Padding for the image itself within the dialog
+                    .padding(16.dp)
             )
             IconButton(
                 onClick = onDismiss,

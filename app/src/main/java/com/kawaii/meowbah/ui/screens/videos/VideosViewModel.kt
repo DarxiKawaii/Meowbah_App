@@ -1,16 +1,20 @@
 package com.kawaii.meowbah.ui.screens.videos
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.text.Html
+import android.util.Log
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kawaii.meowbah.data.CachedVideoInfo
+import com.kawaii.meowbah.data.db.AppDatabase
+import com.kawaii.meowbah.data.db.VideoEntity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import android.util.Log
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
-import org.xmlpull.v1.XmlPullParserException
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.IOException
 import java.io.InputStreamReader
@@ -18,10 +22,18 @@ import java.net.HttpURLConnection
 import java.net.MalformedURLException
 import java.net.URL
 
-class VideosViewModel : ViewModel() {
+class VideosViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val videoDao = AppDatabase.getInstance(application).videoDao()
 
     private val _videos = MutableStateFlow<List<CachedVideoInfo>>(emptyList())
     val videos: StateFlow<List<CachedVideoInfo>> = _videos
+
+    private val _generatedFilters = MutableStateFlow<List<String>>(listOf("All"))
+    val generatedFilters: StateFlow<List<String>> = _generatedFilters
+
+    private val _selectedFilter = MutableStateFlow("All")
+    val selectedFilter: StateFlow<String> = _selectedFilter
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
@@ -31,7 +43,7 @@ class VideosViewModel : ViewModel() {
 
     companion object {
         private const val TAG = "VideosViewModel"
-        private const val RSS_FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCNytjdD5-KZInxjVeWV_qQw" // Meowbah's Channel ID - CORRECTED
+        private const val RSS_FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCNytjdD5-KZInxjVeWV_qQw"
         private const val NS_ATOM = "http://www.w3.org/2005/Atom"
         private const val NS_YT = "http://www.youtube.com/xml/schemas/2015"
         private const val NS_MEDIA = "http://search.yahoo.com/mrss/"
@@ -45,13 +57,11 @@ class VideosViewModel : ViewModel() {
         val thumbnailUrl: String?
     )
 
-    fun fetchVideos() {
+    init {
+        // Observe database
         viewModelScope.launch {
-            _isLoading.value = true
-            _error.value = null
-            try {
-                val feedItems = fetchAndParseRssFeed()
-                _videos.value = feedItems.map {
+            videoDao.getAllVideos().collectLatest { entities ->
+                _videos.value = entities.map {
                     CachedVideoInfo(
                         id = it.id,
                         title = it.title,
@@ -60,25 +70,62 @@ class VideosViewModel : ViewModel() {
                         publishedAt = it.publishedAt
                     )
                 }
-                if (feedItems.isEmpty()) {
-                    Log.d(TAG, "No videos found from RSS feed or feed was empty.")
-                    // Optionally set an error or a specific state for empty list
+            }
+        }
+    }
+
+    fun fetchVideos() {
+        viewModelScope.launch {
+            _isLoading.value = _videos.value.isEmpty() // Only show full loading if cache is empty
+            _error.value = null
+            try {
+                val feedItems = fetchAndParseRssFeed()
+                if (feedItems.isNotEmpty()) {
+                    val entities = feedItems.map {
+                        VideoEntity(
+                            id = it.id,
+                            title = it.title,
+                            description = it.description,
+                            thumbnailUrl = it.thumbnailUrl,
+                            publishedAt = it.publishedAt
+                        )
+                    }
+                    videoDao.insertVideos(entities)
                 }
-            } catch (e: IOException) {
-                Log.e(TAG, "IOException fetching or parsing RSS feed", e)
-                _error.value = "Network error. Please check your connection."
-                _videos.value = emptyList()
-            } catch (e: XmlPullParserException) {
-                Log.e(TAG, "XmlPullParserException parsing RSS feed", e)
-                _error.value = "Error parsing video feed."
-                _videos.value = emptyList()
             } catch (e: Exception) {
-                Log.e(TAG, "Unexpected error fetching videos from RSS", e)
-                _error.value = "Failed to load videos due to an unexpected error."
-                _videos.value = emptyList()
+                Log.e(TAG, "Error fetching videos", e)
+                if (_videos.value.isEmpty()) {
+                    _error.value = "Failed to load videos. Please check your connection."
+                }
             } finally {
                 _isLoading.value = false
             }
+        }
+    }
+
+    fun selectFilter(filter: String) {
+        _selectedFilter.value = filter
+    }
+
+    fun generateFilters() {
+        viewModelScope.launch {
+            val currentVideos = _videos.value
+            if (currentVideos.isEmpty()) return@launch
+
+            val keywords = listOf("Plush", "Shorts", "Animation", "Reaction", "Gacha", "Minecraft", "Story", "Live")
+            val foundFilters = keywords.filter { keyword ->
+                currentVideos.any { it.title.contains(keyword, ignoreCase = true) || it.description?.contains(keyword, ignoreCase = true) == true }
+            }
+            
+            _generatedFilters.value = listOf("All") + foundFilters
+        }
+    }
+
+    fun clearCache() {
+        viewModelScope.launch {
+            videoDao.clearAllVideos()
+            _generatedFilters.value = listOf("All")
+            _selectedFilter.value = "All"
         }
     }
 
@@ -96,10 +143,7 @@ class VideosViewModel : ViewModel() {
             connection.connect()
 
             if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                Log.e(TAG, "RSS Fetch: Server returned HTTP ${connection.responseCode} ${connection.responseMessage}")
-                // Set error state if HTTP request fails
-                // This part was missing proper error propagation to the UI for HTTP errors
-                throw IOException("Failed to fetch RSS feed. Server responded with ${connection.responseCode}")
+                throw IOException("Server responded with ${connection.responseCode}")
             }
 
             reader = InputStreamReader(connection.inputStream, Charsets.UTF_8)
@@ -108,24 +152,18 @@ class VideosViewModel : ViewModel() {
             val parser = factory.newPullParser()
             parser.setInput(reader)
 
-            parser.nextTag() // Advance to the first tag, should be <feed>
+            parser.nextTag()
             parser.require(XmlPullParser.START_TAG, NS_ATOM, "feed")
-
-            var currentVideoId: String? = null
-            var currentTitle: String? = null
-            var currentPublishedAt: String? = null
-            var currentDescription: String? = null
-            var currentThumbnailUrl: String? = null
 
             while (parser.next() != XmlPullParser.END_TAG || parser.name != "feed") {
                 if (parser.eventType != XmlPullParser.START_TAG) continue
 
                 if (parser.namespace == NS_ATOM && parser.name == "entry") {
-                    currentVideoId = null
-                    currentTitle = null
-                    currentPublishedAt = null
-                    currentDescription = null
-                    currentThumbnailUrl = null
+                    var currentVideoId: String? = null
+                    var currentTitle: String? = null
+                    var currentPublishedAt: String? = null
+                    var currentDescription: String? = null
+                    var currentThumbnailUrl: String? = null
 
                     while (parser.next() != XmlPullParser.END_TAG || parser.name != "entry") {
                         if (parser.eventType != XmlPullParser.START_TAG) continue
@@ -141,70 +179,55 @@ class VideosViewModel : ViewModel() {
                             }
                             NS_MEDIA -> when (parser.name) {
                                 "group" -> {
-                                    // Handle media:group to find description and thumbnail
                                     while (parser.next() != XmlPullParser.END_TAG || parser.name != "group") {
                                         if (parser.eventType != XmlPullParser.START_TAG) continue
                                         if (parser.namespace == NS_MEDIA) {
                                             when (parser.name) {
                                                 "description" -> currentDescription = readText(parser)
                                                 "thumbnail" -> {
-                                                    // Prefer a specific thumbnail or just take the first one found
-                                                    // For simplicity, taking the first one if not already set
                                                     if (currentThumbnailUrl == null) {
                                                          currentThumbnailUrl = parser.getAttributeValue(null, "url")
                                                     }
-                                                    skip(parser) // Skip to end tag of thumbnail
+                                                    skip(parser)
                                                 }
                                                 else -> skip(parser)
                                             }
-                                        } else {
-                                            skip(parser)
-                                        }
+                                        } else skip(parser)
                                     }
                                 }
                                 else -> skip(parser)
                             }
                             else -> skip(parser)
                         }
-                    } // End of entry processing
-                    if (currentVideoId != null && currentTitle != null) {
-                        entries.add(RssFeedVideoItem(currentVideoId, currentTitle, currentPublishedAt, currentDescription, currentThumbnailUrl))
-                    } else {
-                        Log.w(TAG, "Skipping RSS entry with missing ID or Title: videoId=$currentVideoId, title=$currentTitle")
                     }
-                    parser.require(XmlPullParser.END_TAG, NS_ATOM, "entry")
-                } else {
-                    skip(parser)
-                }
+                    if (currentVideoId != null && currentTitle != null) {
+                        val decodedTitle = Html.fromHtml(currentTitle, Html.FROM_HTML_MODE_LEGACY).toString()
+                        val decodedDescription = currentDescription?.let { Html.fromHtml(it, Html.FROM_HTML_MODE_LEGACY).toString() }
+                        entries.add(RssFeedVideoItem(currentVideoId, decodedTitle, currentPublishedAt, decodedDescription, currentThumbnailUrl))
+                    }
+                } else skip(parser)
             }
-            parser.require(XmlPullParser.END_TAG, NS_ATOM, "feed")
-
-        } catch (e: MalformedURLException) {
-            Log.e(TAG, "Malformed RSS URL: $RSS_FEED_URL", e)
-            throw IOException("Malformed RSS URL", e) // Propagate as IOException for consistent handling
+        } catch (e: Exception) {
+            Log.e(TAG, "Parsing error", e)
+            throw e
         } finally {
             reader?.close()
             connection?.disconnect()
         }
-        Log.d(TAG, "fetchAndParseRssFeed finished. Found ${entries.size} entries.")
         entries
     }
 
-    // Helper function to read text content of a tag
     private fun readText(parser: XmlPullParser): String {
         var result = ""
         if (parser.next() == XmlPullParser.TEXT) {
             result = parser.text
-            parser.nextTag() // Consume the END_TAG of the current element
+            parser.nextTag()
         }
         return result.trim()
     }
 
-    // Helper function to skip unknown tags
     private fun skip(parser: XmlPullParser) {
-        if (parser.eventType != XmlPullParser.START_TAG) {
-            throw IllegalStateException("Parser not at START_TAG before skip()")
-        }
+        if (parser.eventType != XmlPullParser.START_TAG) throw IllegalStateException()
         var depth = 1
         while (depth != 0) {
             when (parser.next()) {
