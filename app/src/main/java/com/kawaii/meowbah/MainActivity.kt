@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FormatPaint
+import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.FormatPaint
+import androidx.compose.material.icons.outlined.QueryStats
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -66,6 +68,7 @@ import com.kawaii.meowbah.ui.screens.FanArtScreen
 import com.kawaii.meowbah.ui.screens.VideosScreen
 import com.kawaii.meowbah.ui.screens.merch.MerchDetailScreen
 import com.kawaii.meowbah.ui.screens.merch.MerchScreen
+import com.kawaii.meowbah.ui.screens.stats.StatsScreen
 import com.kawaii.meowbah.ui.screens.videodetail.VideoDetailScreen
 import com.kawaii.meowbah.ui.screens.videos.VideosViewModel
 import com.kawaii.meowbah.ui.theme.MeowbahTheme
@@ -81,12 +84,14 @@ sealed class BottomNavItem(
     object Videos : BottomNavItem("videos_tab", "Videos", Icons.Filled.Videocam, Icons.Outlined.Videocam)
     object Art : BottomNavItem(route = "art_tab", label = "Art", Icons.Filled.FormatPaint, outlinedIcon = Icons.Outlined.FormatPaint)
     object Merch : BottomNavItem("merch_tab", "Merch", Icons.Filled.Storefront, Icons.Outlined.Storefront)
+    object Stats : BottomNavItem("stats_tab", "Stats", Icons.Filled.QueryStats, Icons.Outlined.QueryStats)
 }
 
 val bottomNavItems = listOf(
     BottomNavItem.Videos,
     BottomNavItem.Art,
-    BottomNavItem.Merch
+    BottomNavItem.Merch,
+    BottomNavItem.Stats
 )
 
 class MainActivity : ComponentActivity() {
@@ -327,6 +332,9 @@ fun MainScreen(
                         onMerchClick = { merchId -> selectedMerchIdForSheet = merchId },
                         merchViewModel = merchViewModel
                     )
+                }
+                composable(BottomNavItem.Stats.route) {
+                    StatsScreen()
                 }
             }
         }
